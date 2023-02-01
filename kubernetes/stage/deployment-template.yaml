@@ -1,0 +1,91 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  annotations:
+    reloader.stakater.com/auto: "true"
+    secret.reloader.stakater.com/reload: "chaes-frontend"
+  namespace: stage
+  name: chaes-frontend
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: chaes-frontend
+  strategy:
+    rollingUpdate:
+      maxSurge: 25%
+      maxUnavailable: 25%
+    type: RollingUpdate
+  template:
+    metadata:
+      labels:
+        app: chaes-frontend
+    spec:
+      containers:
+        - name: chaes-frontend
+          image: 012426929987.dkr.ecr.us-west-2.amazonaws.com/chaes-frontend:$BITBUCKET_COMMIT
+          imagePullPolicy: Always
+          ports:
+           - containerPort: 3333
+             name: appport
+             protocol: TCP
+          securityContext:
+            runAsUser: 1000
+            runAsNonRoot: true    
+            allowPrivilegeEscalation: false
+          resources:
+            requests:
+              memory: "64Mi"
+              cpu: "60m"
+            limits:
+              memory: "256Mi"
+              cpu: "256m"
+          envFrom:
+          - secretRef:
+                  name: chaes-frontend
+      nodeSelector:
+        alpha.eksctl.io/nodegroup-name: uptech-eks-production-chaes
+---
+apiVersion: v1
+kind: Service
+metadata:
+  namespace: stage
+  name: chaes-frontend
+spec:
+  ports:
+    - port: 80
+      targetPort: 3333
+      protocol: TCP
+  type: ClusterIP
+  selector:
+    app: chaes-frontend
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  annotations:
+    ingress.kubernetes.io/ssl-redirect: "true"
+  namespace: stage
+  name: chaes-frontend
+spec:
+  rules:
+  - host: chaes.chaes.com.br
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: chaes-frontend
+            port:
+              number: 80    
+#---
+#apiVersion: kubernetes-client.io/v1
+#kind: ExternalSecret
+#metadata:
+#  name: chaes-frontend
+#  namespace: stage
+#spec:
+#  frontendType: secretsManager
+#  dataFrom:
+#    - chaes/chaes-frontend

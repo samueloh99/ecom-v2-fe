@@ -1,0 +1,59 @@
+image: atlassian/default-image:2
+options:
+  docker: true
+
+definitions:
+  services:
+    docker:
+      memory: 3072
+  steps:
+    - step: &buildAndPush
+        name: "Build and Push"        
+        size: 2x
+        image: atlassian/pipelines-awscli
+        caches: 
+          - docker
+        services:
+          - docker
+        script:
+          - export IMAGE_NAME=$DOCKER_ECR_REPO_URL/$DOCKER_IMAGE_NAME:$BITBUCKET_COMMIT
+          - eval $(aws ecr get-login --no-include-email --region us-west-2 | sed 's|https://||')            
+          - docker build -t $IMAGE_NAME .
+          - docker push $IMAGE_NAME
+    - step: &deployStage
+        name: "Deploy to EKS Stage"
+        deployment: stage
+        script:
+          - envsubst < ./kubernetes/$ENV/deployment-template.yaml > ./kubernetes/$ENV/deployment.yaml
+          - pipe: atlassian/aws-eks-kubectl-run:2.2.0
+            variables:
+              CLUSTER_NAME: "uptech-eks-production"
+              KUBECTL_COMMAND: "apply"
+              RESOURCE_PATH: "./kubernetes/$ENV/"
+              DEBUG: "false"
+    - step: &deployProd
+        name: "Deploy to EKS Production"
+        deployment: production
+        script:
+          - envsubst < ./kubernetes/$ENV/deployment-template.yaml > ./kubernetes/$ENV/deployment.yaml
+          - pipe: atlassian/aws-eks-kubectl-run:2.2.0
+            variables:
+              CLUSTER_NAME: "uptech-eks-production"
+              KUBECTL_COMMAND: "apply"
+              RESOURCE_PATH: "./kubernetes/$ENV/"
+              DEBUG: "false"              
+
+pipelines:
+  branches:
+    '{stage}':
+    - step: *buildAndPush
+    - step: *deployStage
+    '{master}':
+    - step: *buildAndPush
+    - step: *deployProd
+
+
+
+
+
+    
